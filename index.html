@@ -7,7 +7,7 @@
   <style>
     body {
       font-family: Arial, sans-serif;
-      background: #f0f2f5;
+      background: #f9f9f9;
       padding: 20px;
       color: #333;
     }
@@ -22,154 +22,107 @@
       box-shadow: 0 2px 5px rgba(0,0,0,0.1);
       max-width: 400px;
     }
-    .crypto h2 {
-      margin-top: 0;
-    }
-    .value {
-      font-size: 1em;
-      margin-top: 10px;
-    }
-    .input-amount {
-      margin-top: 10px;
-    }
     input[type="number"] {
       width: 100%;
       padding: 8px;
-      margin-top: 5px;
       font-size: 1em;
-      border-radius: 5px;
-      border: 1px solid #ccc;
+      margin-top: 5px;
+    }
+    .info {
+      margin-top: 10px;
     }
     .advice {
-      margin-top: 10px;
       font-weight: bold;
+      margin-top: 10px;
     }
   </style>
 </head>
 <body>
   <h1>Mi Cartera Cripto</h1>
 
-  <div id="sol" class="crypto">
-    <h2>Solana (SOL)</h2>
-    <div class="input-amount">
-      <label>Cantidad que tienes:</label>
-      <input type="number" step="any" id="solInput" />
-    </div>
-    <div class="value">Cargando...</div>
-    <div class="advice" id="solAdvice"></div>
-  </div>
-
-  <div id="eth" class="crypto">
-    <h2>Ethereum (ETH)</h2>
-    <div class="input-amount">
-      <label>Cantidad que tienes:</label>
-      <input type="number" step="any" id="ethInput" />
-    </div>
-    <div class="value">Cargando...</div>
-    <div class="advice" id="ethAdvice"></div>
-  </div>
-
-  <div id="doge" class="crypto">
-    <h2>Dogecoin (DOGE)</h2>
-    <div class="input-amount">
-      <label>Cantidad que tienes:</label>
-      <input type="number" step="any" id="dogeInput" />
-    </div>
-    <div class="value">Cargando...</div>
-    <div class="advice" id="dogeAdvice"></div>
-  </div>
+  <div id="container"></div>
 
   <script>
-    const inputs = {
-      sol: document.getElementById("solInput"),
-      eth: document.getElementById("ethInput"),
-      doge: document.getElementById("dogeInput")
-    };
+    const criptos = [
+      { id: "bitcoin", simbolo: "btc", nombre: "Bitcoin" },
+      { id: "ethereum", simbolo: "eth", nombre: "Ethereum" },
+      { id: "solana", simbolo: "sol", nombre: "Solana" },
+      { id: "dogecoin", simbolo: "doge", nombre: "Dogecoin" }
+    ];
 
-    const adviceTexts = {
-      sol: document.getElementById("solAdvice"),
-      eth: document.getElementById("ethAdvice"),
-      doge: document.getElementById("dogeAdvice")
-    };
+    const container = document.getElementById("container");
+    const preciosPrevios = {};
 
-    const previousPrices = {
-      sol: null,
-      eth: null,
-      doge: null
-    };
-
-    function guardarValores() {
-      localStorage.setItem("sol", inputs.sol.value || 0);
-      localStorage.setItem("eth", inputs.eth.value || 0);
-      localStorage.setItem("doge", inputs.doge.value || 0);
+    function crearHTML() {
+      criptos.forEach(c => {
+        container.innerHTML += `
+          <div class="crypto" id="${c.simbolo}">
+            <h2>${c.nombre}</h2>
+            <label>¿Cuánto tienes?</label>
+            <input type="number" step="any" id="${c.simbolo}-input" placeholder="0.00" />
+            <div class="info" id="${c.simbolo}-info">Cargando precio...</div>
+            <div class="advice" id="${c.simbolo}-advice"></div>
+          </div>
+        `;
+      });
     }
 
-    function cargarValores() {
-      inputs.sol.value = localStorage.getItem("sol") || 0;
-      inputs.eth.value = localStorage.getItem("eth") || 0;
-      inputs.doge.value = localStorage.getItem("doge") || 0;
+    function guardar(c) {
+      const val = document.getElementById(`${c}-input`).value;
+      localStorage.setItem(`cantidad-${c}`, val);
     }
 
-    async function obtenerDatos() {
+    function cargar(c) {
+      return parseFloat(localStorage.getItem(`cantidad-${c}`)) || 0;
+    }
+
+    async function actualizarPrecios() {
       try {
-        const res = await fetch('https://api.coinstats.app/public/v1/coins?currency=EUR');
+        const ids = criptos.map(c => c.id).join(',');
+        const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=eur`);
         const datos = await res.json();
-        const monedas = datos.coins;
 
-        const solana = monedas.find(c => c.id === 'solana');
-        const ethereum = monedas.find(c => c.id === 'ethereum');
-        const dogecoin = monedas.find(c => c.id === 'dogecoin');
+        criptos.forEach(c => {
+          const precio = datos[c.id].eur;
+          const cantidad = cargar(c.simbolo);
+          const total = precio * cantidad;
 
-        const cantidadSOL = parseFloat(inputs.sol.value) || 0;
-        const cantidadETH = parseFloat(inputs.eth.value) || 0;
-        const cantidadDOGE = parseFloat(inputs.doge.value) || 0;
+          document.getElementById(`${c.simbolo}-info`).innerHTML = `
+            Precio actual: ${precio.toFixed(2)} €<br>
+            Valor total: ${total.toFixed(2)} €
+          `;
 
-        actualizarCripto('sol', solana.price, cantidadSOL);
-        actualizarCripto('eth', ethereum.price, cantidadETH);
-        actualizarCripto('doge', dogecoin.price, cantidadDOGE);
-      } catch (error) {
-        console.error('Error al obtener datos:', error);
+          // Asistente para principiantes:
+          const anterior = preciosPrevios[c.simbolo];
+          let consejo = "Sin cambios relevantes.";
+          if (anterior) {
+            const variacion = ((precio - anterior) / anterior) * 100;
+            if (variacion > 5) consejo = "El precio ha subido bastante. Podrías considerar vender.";
+            else if (variacion < -5) consejo = "El precio ha bajado. Si crees en el proyecto, podrías comprar más.";
+            else consejo = "Todo estable. Puedes mantener.";
+          }
+          document.getElementById(`${c.simbolo}-advice`).innerText = consejo;
+          preciosPrevios[c.simbolo] = precio;
+        });
+
+      } catch (e) {
+        container.innerHTML = "Error al cargar datos. Intenta más tarde.";
       }
     }
 
-    function actualizarCripto(id, precioActual, cantidad) {
-      const valorTotal = precioActual * cantidad;
-      document.querySelector(`#${id} .value`).innerHTML =
-        `Precio: ${precioActual.toFixed(2)} €<br>
-         Valor total: ${valorTotal.toFixed(2)} €`;
+    crearHTML();
 
-      if (previousPrices[id] !== null) {
-        const cambio = ((precioActual - previousPrices[id]) / previousPrices[id]) * 100;
-        let consejo = '';
-        if (cambio > 5) {
-          consejo = 'El precio ha subido significativamente. Podrías considerar vender.';
-        } else if (cambio < -5) {
-          consejo = 'El precio ha bajado significativamente. Podrías considerar comprar más.';
-        } else {
-          consejo = 'No hay cambios significativos. Mantén tu inversión.';
-        }
-        adviceTexts[id].innerText = consejo;
-      }
-
-      previousPrices[id] = precioActual;
-    }
-
-    inputs.sol.addEventListener("input", () => {
-      guardarValores();
-      obtenerDatos();
-    });
-    inputs.eth.addEventListener("input", () => {
-      guardarValores();
-      obtenerDatos();
-    });
-    inputs.doge.addEventListener("input", () => {
-      guardarValores();
-      obtenerDatos();
+    criptos.forEach(c => {
+      const input = document.getElementById(`${c.simbolo}-input`);
+      input.value = cargar(c.simbolo);
+      input.addEventListener("input", () => {
+        guardar(c.simbolo);
+        actualizarPrecios();
+      });
     });
 
-    cargarValores();
-    obtenerDatos();
-    setInterval(obtenerDatos, 60000); // Actualiza cada 60 segundos
+    actualizarPrecios();
+    setInterval(actualizarPrecios, 60000);
   </script>
 </body>
 </html>
