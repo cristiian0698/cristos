@@ -1,128 +1,186 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Mi Cartera Cripto</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f9f9f9;
-      padding: 20px;
-      color: #333;
-    }
-    h1 {
-      text-align: center;
-    }
-    .crypto {
-      background: #fff;
-      border-radius: 8px;
-      padding: 15px;
-      margin: 15px auto;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-      max-width: 400px;
-    }
-    input[type="number"] {
-      width: 100%;
-      padding: 8px;
-      font-size: 1em;
-      margin-top: 5px;
-    }
-    .info {
-      margin-top: 10px;
-    }
-    .advice {
-      font-weight: bold;
-      margin-top: 10px;
-    }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Seguimiento Criptomonedas</title>
+<script src="https://cdn.emailjs.com/dist/email.min.js"></script>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; max-width: 480px; }
+  h1 { text-align: center; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 20px;}
+  th, td { border: 1px solid #ddd; padding: 8px; text-align: center;}
+  th { background: #333; color: white;}
+  input[type="number"] { width: 80px; }
+  #status { margin-bottom: 10px; color: green; font-weight: bold; }
+</style>
 </head>
 <body>
-  <h1>Mi Cartera Cripto</h1>
 
-  <div id="container"></div>
+<h1>Seguimiento Criptomonedas</h1>
 
-  <script>
-    const criptos = [
-      { id: "bitcoin", simbolo: "btc", nombre: "Bitcoin" },
-      { id: "ethereum", simbolo: "eth", nombre: "Ethereum" },
-      { id: "solana", simbolo: "sol", nombre: "Solana" },
-      { id: "dogecoin", simbolo: "doge", nombre: "Dogecoin" }
-    ];
+<div id="status"></div>
 
-    const container = document.getElementById("container");
-    const preciosPrevios = {};
+<table>
+  <thead>
+    <tr>
+      <th>Cripto</th>
+      <th>Cantidad</th>
+      <th>Precio compra (€)</th>
+      <th>Precio actual (€)</th>
+      <th>Ganancia/Pérdida (€)</th>
+    </tr>
+  </thead>
+  <tbody id="tabla-criptos">
+    <!-- Filas se generan con JS -->
+  </tbody>
+</table>
 
-    function crearHTML() {
-      criptos.forEach(c => {
-        container.innerHTML += `
-          <div class="crypto" id="${c.simbolo}">
-            <h2>${c.nombre}</h2>
-            <label>¿Cuánto tienes?</label>
-            <input type="number" step="any" id="${c.simbolo}-input" placeholder="0.00" />
-            <div class="info" id="${c.simbolo}-info">Cargando precio...</div>
-            <div class="advice" id="${c.simbolo}-advice"></div>
-          </div>
-        `;
-      });
-    }
+<button id="guardar">Guardar datos</button>
 
-    function guardar(c) {
-      const val = document.getElementById(`${c}-input`).value;
-      localStorage.setItem(`cantidad-${c}`, val);
-    }
+<script>
+  // Config EmailJS
+  const SERVICE_ID = 'service_ioorlfv';
+  const TEMPLATE_ID = 'template_e5ibdr1';
+  const PUBLIC_KEY = '9F2a-_3g1ZrA6kXwN';
 
-    function cargar(c) {
-      return parseFloat(localStorage.getItem(`cantidad-${c}`)) || 0;
-    }
+  // Criptos a seguir
+  const criptos = [
+    {id:'bitcoin', nombre:'Bitcoin'},
+    {id:'ethereum', nombre:'Ethereum'},
+    {id:'dogecoin', nombre:'Dogecoin'},
+    {id:'solana', nombre:'Solana'}
+  ];
 
-    async function actualizarPrecios() {
-      try {
-        const ids = criptos.map(c => c.id).join(',');
-        const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=eur`);
-        const datos = await res.json();
+  // Umbral en euros para alertas
+  const UMBRAL_EUROS = 5;
 
-        criptos.forEach(c => {
-          const precio = datos[c.id].eur;
-          const cantidad = cargar(c.simbolo);
-          const total = precio * cantidad;
+  // Para evitar spam, guardamos alertas enviadas (hash por cripto + tipo alerta)
+  let alertasEnviadas = {};
 
-          document.getElementById(`${c.simbolo}-info`).innerHTML = `
-            Precio actual: ${precio.toFixed(2)} €<br>
-            Valor total: ${total.toFixed(2)} €
-          `;
+  // Iniciar EmailJS
+  emailjs.init(PUBLIC_KEY);
 
-          // Asistente para principiantes:
-          const anterior = preciosPrevios[c.simbolo];
-          let consejo = "Sin cambios relevantes.";
-          if (anterior) {
-            const variacion = ((precio - anterior) / anterior) * 100;
-            if (variacion > 5) consejo = "El precio ha subido bastante. Podrías considerar vender.";
-            else if (variacion < -5) consejo = "El precio ha bajado. Si crees en el proyecto, podrías comprar más.";
-            else consejo = "Todo estable. Puedes mantener.";
-          }
-          document.getElementById(`${c.simbolo}-advice`).innerText = consejo;
-          preciosPrevios[c.simbolo] = precio;
-        });
+  // Cargar datos guardados o por defecto
+  function cargarDatos() {
+    const datos = JSON.parse(localStorage.getItem('misCriptos')) || {};
+    return datos;
+  }
 
-      } catch (e) {
-        container.innerHTML = "Error al cargar datos. Intenta más tarde.";
-      }
-    }
+  // Guardar datos en localStorage
+  function guardarDatos(datos) {
+    localStorage.setItem('misCriptos', JSON.stringify(datos));
+    mostrarStatus('Datos guardados');
+  }
 
-    crearHTML();
+  // Mostrar mensaje status
+  function mostrarStatus(msg, error=false) {
+    const status = document.getElementById('status');
+    status.textContent = msg;
+    status.style.color = error ? 'red' : 'green';
+    setTimeout(() => { status.textContent = ''; }, 4000);
+  }
 
+  // Construir tabla con inputs para cantidad y precio compra
+  function construirTabla(datos) {
+    const tbody = document.getElementById('tabla-criptos');
+    tbody.innerHTML = '';
     criptos.forEach(c => {
-      const input = document.getElementById(`${c.simbolo}-input`);
-      input.value = cargar(c.simbolo);
-      input.addEventListener("input", () => {
-        guardar(c.simbolo);
-        actualizarPrecios();
-      });
+      const cantidad = datos[c.id]?.cantidad || '';
+      const precioCompra = datos[c.id]?.precioCompra || '';
+      const fila = document.createElement('tr');
+      fila.innerHTML = `
+        <td>${c.nombre}</td>
+        <td><input type="number" step="any" min="0" data-id="${c.id}" data-tipo="cantidad" value="${cantidad}"></td>
+        <td><input type="number" step="any" min="0" data-id="${c.id}" data-tipo="precioCompra" value="${precioCompra}"></td>
+        <td id="actual-${c.id}">Cargando...</td>
+        <td id="ganancia-${c.id}">-</td>
+      `;
+      tbody.appendChild(fila);
     });
+  }
 
+  // Obtener datos de la tabla (inputs)
+  function obtenerDatosTabla() {
+    const inputs = document.querySelectorAll('#tabla-criptos input');
+    const datos = {};
+    inputs.forEach(i => {
+      const id = i.dataset.id;
+      const tipo = i.dataset.tipo;
+      if (!datos[id]) datos[id] = {};
+      datos[id][tipo] = i.value ? parseFloat(i.value) : 0;
+    });
+    return datos;
+  }
+
+  // Enviar email alerta
+  function enviarAlerta(monedaname, valorActual, valorCompra, ganancia) {
+    const alertaIdSubida = monedaname + '_subida';
+    const alertaIdBajada = monedaname + '_bajada';
+
+    // Permitir alertas siempre (sin bloquear repetidos)
+
+    const accion = ganancia > 0 ? 'Podrías vender' : 'Espera a que mejore';
+
+    const templateParams = {
+      moneda: monedaname,
+      valor_actual: valorActual.toFixed(2),
+      valor_compra: valorCompra.toFixed(2),
+      ganancia: ganancia.toFixed(2),
+      accion: accion
+    };
+
+    emailjs.send(SERVICE_ID, TEMPLATE_ID, templateParams)
+      .then(() => {
+        console.log('Alerta enviada para', monedaname);
+      }, (error) => {
+        console.error('Error al enviar alerta:', error);
+      });
+  }
+
+  // Actualizar precios y calcular ganancias/pérdidas
+  async function actualizarPrecios() {
+    try {
+      const resp = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${criptos.map(c => c.id).join(',')}&vs_currencies=eur`);
+      const datosApi = await resp.json();
+      const datosGuardados = obtenerDatosTabla();
+
+      criptos.forEach(c => {
+        const precioActual = datosApi[c.id]?.eur || 0;
+        const precioCompra = datosGuardados[c.id]?.precioCompra || 0;
+        const cantidad = datosGuardados[c.id]?.cantidad || 0;
+        const ganancia = (precioActual - precioCompra) * cantidad;
+
+        document.getElementById('actual-' + c.id).textContent = precioActual.toFixed(2) + ' €';
+        document.getElementById('ganancia-' + c.id).textContent = ganancia.toFixed(2) + ' €';
+
+        // Comprobar si ganancia o pérdida supera umbral
+        if (cantidad > 0 && Math.abs(precioActual - precioCompra) > UMBRAL_EUROS) {
+          enviarAlerta(c.nombre, precioActual, precioCompra, ganancia);
+        }
+      });
+    } catch (error) {
+      mostrarStatus('Error al cargar datos, intenta más tarde', true);
+      console.error(error);
+    }
+  }
+
+  // Al cargar la página
+  window.onload = () => {
+    const datos = cargarDatos();
+    construirTabla(datos);
     actualizarPrecios();
+
+    // Actualizar cada 60 segundos
     setInterval(actualizarPrecios, 60000);
-  </script>
+
+    // Guardar datos al hacer click
+    document.getElementById('guardar').onclick = () => {
+      const datosAGuardar = obtenerDatosTabla();
+      guardarDatos(datosAGuardar);
+    };
+  };
+</script>
+
 </body>
 </html>
