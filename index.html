@@ -4,183 +4,189 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Seguimiento Criptomonedas</title>
-<script src="https://cdn.emailjs.com/dist/email.min.js"></script>
 <style>
-  body { font-family: Arial, sans-serif; margin: 20px; max-width: 480px; }
-  h1 { text-align: center; }
-  table { width: 100%; border-collapse: collapse; margin-bottom: 20px;}
-  th, td { border: 1px solid #ddd; padding: 8px; text-align: center;}
-  th { background: #333; color: white;}
-  input[type="number"] { width: 80px; }
-  #status { margin-bottom: 10px; color: green; font-weight: bold; }
+  body { font-family: Arial, sans-serif; margin: 20px; background: #f0f2f5; color: #333; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+  th, td { padding: 12px; border-bottom: 1px solid #ddd; text-align: center; }
+  th { background-color: #4CAF50; color: white; }
+  input[type=number] { width: 80px; padding: 5px; }
+  button { padding: 8px 15px; background-color: #4CAF50; color: white; border: none; cursor: pointer; }
+  button:hover { background-color: #45a049; }
+  #status { margin-bottom: 20px; }
 </style>
-</head>
-<body>
-
-<h1>Seguimiento Criptomonedas</h1>
-
-<div id="status"></div>
-
-<table>
-  <thead>
-    <tr>
-      <th>Cripto</th>
-      <th>Cantidad</th>
-      <th>Precio compra (€)</th>
-      <th>Precio actual (€)</th>
-      <th>Ganancia/Pérdida (€)</th>
-    </tr>
-  </thead>
-  <tbody id="tabla-criptos">
-    <!-- Filas se generan con JS -->
-  </tbody>
-</table>
-
-<button id="guardar">Guardar datos</button>
-
+<script src="https://cdn.jsdelivr.net/npm/emailjs-com@3/dist/email.min.js"></script>
 <script>
-  // Config EmailJS
-  const SERVICE_ID = 'service_ioorlfv';
-  const TEMPLATE_ID = 'template_e5ibdr1';
-  const PUBLIC_KEY = '9F2a-_3g1ZrA6kXwN';
+  let intentos = 0;
+  const maxIntentos = 3;
+  const claveCorrecta = "123406";
 
-  // Criptos a seguir
-  const criptos = [
-    {id:'bitcoin', nombre:'Bitcoin'},
-    {id:'ethereum', nombre:'Ethereum'},
-    {id:'dogecoin', nombre:'Dogecoin'},
-    {id:'solana', nombre:'Solana'}
-  ];
-
-  // Umbral en euros para alertas
-  const UMBRAL_EUROS = 5;
-
-  // Para evitar spam, guardamos alertas enviadas (hash por cripto + tipo alerta)
-  let alertasEnviadas = {};
-
-  // Iniciar EmailJS
-  emailjs.init(PUBLIC_KEY);
-
-  // Cargar datos guardados o por defecto
-  function cargarDatos() {
-    const datos = JSON.parse(localStorage.getItem('misCriptos')) || {};
-    return datos;
+  function pedirClave() {
+    while (intentos < maxIntentos) {
+      const clave = prompt("Introduce la contraseña para acceder:");
+      if (clave === claveCorrecta) {
+        iniciarApp();
+        return true;
+      } else {
+        intentos++;
+        alert(`Contraseña incorrecta. Intento ${intentos} de ${maxIntentos}.`);
+      }
+    }
+    document.body.innerHTML = "<h2>Acceso bloqueado por demasiados intentos fallidos.</h2>";
+    return false;
   }
 
-  // Guardar datos en localStorage
-  function guardarDatos(datos) {
-    localStorage.setItem('misCriptos', JSON.stringify(datos));
-    mostrarStatus('Datos guardados');
+  // Variables globales
+  const criptos = ['bitcoin', 'ethereum', 'dogecoin', 'solana'];
+  let precios = {};
+  let cantidades = {};
+  let umbralGanancia = 5; // €5
+  let umbralPerdida = -5; // -€5
+
+  // EmailJS config
+  const serviceID = 'service_ioorlfv';
+  const templateID = 'template_e5ibdr1';
+  const publicKey = '9F2a-_3g1ZrA6kXwN';
+
+  function iniciarApp() {
+    document.getElementById('status').textContent = "Cargando datos...";
+    cargarCantidades();
+    actualizarPrecios();
+    setInterval(actualizarPrecios, 60000); // actualiza cada 60 segundos
   }
 
-  // Mostrar mensaje status
-  function mostrarStatus(msg, error=false) {
-    const status = document.getElementById('status');
-    status.textContent = msg;
-    status.style.color = error ? 'red' : 'green';
-    setTimeout(() => { status.textContent = ''; }, 4000);
-  }
-
-  // Construir tabla con inputs para cantidad y precio compra
-  function construirTabla(datos) {
-    const tbody = document.getElementById('tabla-criptos');
-    tbody.innerHTML = '';
+  function cargarCantidades() {
     criptos.forEach(c => {
-      const cantidad = datos[c.id]?.cantidad || '';
-      const precioCompra = datos[c.id]?.precioCompra || '';
-      const fila = document.createElement('tr');
-      fila.innerHTML = `
-        <td>${c.nombre}</td>
-        <td><input type="number" step="any" min="0" data-id="${c.id}" data-tipo="cantidad" value="${cantidad}"></td>
-        <td><input type="number" step="any" min="0" data-id="${c.id}" data-tipo="precioCompra" value="${precioCompra}"></td>
-        <td id="actual-${c.id}">Cargando...</td>
-        <td id="ganancia-${c.id}">-</td>
-      `;
-      tbody.appendChild(fila);
+      let saved = localStorage.getItem(`cantidad_${c}`);
+      cantidades[c] = saved ? parseFloat(saved) : 0;
+      document.getElementById(`input_${c}`).value = cantidades[c];
     });
   }
 
-  // Obtener datos de la tabla (inputs)
-  function obtenerDatosTabla() {
-    const inputs = document.querySelectorAll('#tabla-criptos input');
-    const datos = {};
-    inputs.forEach(i => {
-      const id = i.dataset.id;
-      const tipo = i.dataset.tipo;
-      if (!datos[id]) datos[id] = {};
-      datos[id][tipo] = i.value ? parseFloat(i.value) : 0;
-    });
-    return datos;
+  function guardarCantidad(cripto) {
+    const input = document.getElementById(`input_${cripto}`);
+    let val = parseFloat(input.value);
+    if (isNaN(val) || val < 0) {
+      alert("Introduce un valor válido y positivo.");
+      input.value = cantidades[cripto];
+      return;
+    }
+    cantidades[cripto] = val;
+    localStorage.setItem(`cantidad_${cripto}`, val);
+    calcularTotales();
   }
 
-  // Enviar email alerta
-  function enviarAlerta(monedaname, valorActual, valorCompra, ganancia) {
-    const alertaIdSubida = monedaname + '_subida';
-    const alertaIdBajada = monedaname + '_bajada';
-
-    // Permitir alertas siempre (sin bloquear repetidos)
-
-    const accion = ganancia > 0 ? 'Podrías vender' : 'Espera a que mejore';
-
-    const templateParams = {
-      moneda: monedaname,
-      valor_actual: valorActual.toFixed(2),
-      valor_compra: valorCompra.toFixed(2),
-      ganancia: ganancia.toFixed(2),
-      accion: accion
-    };
-
-    emailjs.send(SERVICE_ID, TEMPLATE_ID, templateParams)
-      .then(() => {
-        console.log('Alerta enviada para', monedaname);
-      }, (error) => {
-        console.error('Error al enviar alerta:', error);
-      });
-  }
-
-  // Actualizar precios y calcular ganancias/pérdidas
   async function actualizarPrecios() {
     try {
-      const resp = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${criptos.map(c => c.id).join(',')}&vs_currencies=eur`);
-      const datosApi = await resp.json();
-      const datosGuardados = obtenerDatosTabla();
-
-      criptos.forEach(c => {
-        const precioActual = datosApi[c.id]?.eur || 0;
-        const precioCompra = datosGuardados[c.id]?.precioCompra || 0;
-        const cantidad = datosGuardados[c.id]?.cantidad || 0;
-        const ganancia = (precioActual - precioCompra) * cantidad;
-
-        document.getElementById('actual-' + c.id).textContent = precioActual.toFixed(2) + ' €';
-        document.getElementById('ganancia-' + c.id).textContent = ganancia.toFixed(2) + ' €';
-
-        // Comprobar si ganancia o pérdida supera umbral
-        if (cantidad > 0 && Math.abs(precioActual - precioCompra) > UMBRAL_EUROS) {
-          enviarAlerta(c.nombre, precioActual, precioCompra, ganancia);
-        }
-      });
+      const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${criptos.join(',')}&vs_currencies=eur`);
+      const data = await response.json();
+      precios = data;
+      mostrarDatos();
+      calcularTotales();
+      revisarAlertas();
+      document.getElementById('status').textContent = "Datos actualizados: " + new Date().toLocaleTimeString();
     } catch (error) {
-      mostrarStatus('Error al cargar datos, intenta más tarde', true);
-      console.error(error);
+      document.getElementById('status').textContent = "Error al cargar datos, intenta más tarde.";
     }
   }
 
-  // Al cargar la página
-  window.onload = () => {
-    const datos = cargarDatos();
-    construirTabla(datos);
-    actualizarPrecios();
+  function mostrarDatos() {
+    criptos.forEach(c => {
+      const precio = precios[c] ? precios[c].eur : 0;
+      document.getElementById(`precio_${c}`).textContent = precio.toFixed(2) + " €";
+      const valorCripto = cantidades[c] * precio;
+      document.getElementById(`valor_${c}`).textContent = valorCripto.toFixed(2) + " €";
+    });
+  }
 
-    // Actualizar cada 60 segundos
-    setInterval(actualizarPrecios, 60000);
+  function calcularTotales() {
+    let totalEuros = 0;
+    criptos.forEach(c => {
+      const precio = precios[c] ? precios[c].eur : 0;
+      totalEuros += cantidades[c] * precio;
+    });
+    document.getElementById('total_inversion').textContent = totalEuros.toFixed(2) + " €";
+  }
 
-    // Guardar datos al hacer click
-    document.getElementById('guardar').onclick = () => {
-      const datosAGuardar = obtenerDatosTabla();
-      guardarDatos(datosAGuardar);
+  // Guardamos el valor base para comparar ganancias/perdidas en localStorage
+  function inicializarBase() {
+    if (!localStorage.getItem('valor_base')) {
+      localStorage.setItem('valor_base', document.getElementById('total_inversion').textContent);
+    }
+  }
+
+  function revisarAlertas() {
+    const valorBaseStr = localStorage.getItem('valor_base');
+    if (!valorBaseStr) {
+      inicializarBase();
+      return;
+    }
+    const valorBase = parseFloat(valorBaseStr);
+    const valorActual = parseFloat(document.getElementById('total_inversion').textContent);
+    const diferencia = valorActual - valorBase;
+
+    if (diferencia >= umbralGanancia) {
+      enviarCorreo('ganancia', diferencia.toFixed(2));
+      localStorage.setItem('valor_base', valorActual.toFixed(2)); // reset base para no enviar muchas alertas
+      alert(`¡Tu inversión ha subido ${diferencia.toFixed(2)} €!`);
+    } else if (diferencia <= umbralPerdida) {
+      enviarCorreo('perdida', diferencia.toFixed(2));
+      localStorage.setItem('valor_base', valorActual.toFixed(2));
+      alert(`Tu inversión ha bajado ${diferencia.toFixed(2)} €. Ten cuidado.`);
+    }
+  }
+
+  function enviarCorreo(tipo, cantidad) {
+    emailjs.init(publicKey);
+    const templateParams = {
+      tipo_alerta: tipo,
+      cantidad_alerta: cantidad,
+      hora_alerta: new Date().toLocaleString()
     };
-  };
+    emailjs.send(serviceID, templateID, templateParams)
+      .then(() => console.log('Correo enviado: ' + tipo))
+      .catch(err => console.error('Error enviando correo:', err));
+  }
 </script>
-
+</head>
+<body onload="pedirClave()">
+  <h1>Seguimiento Criptomonedas</h1>
+  <div id="status">Cargando...</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Criptomoneda</th>
+        <th>Precio (EUR)</th>
+        <th>Cantidad</th>
+        <th>Valor (EUR)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Bitcoin (BTC)</td>
+        <td id="precio_bitcoin">-</td>
+        <td><input type="number" id="input_bitcoin" min="0" step="any" onchange="guardarCantidad('bitcoin')" /></td>
+        <td id="valor_bitcoin">-</td>
+      </tr>
+      <tr>
+        <td>Ethereum (ETH)</td>
+        <td id="precio_ethereum">-</td>
+        <td><input type="number" id="input_ethereum" min="0" step="any" onchange="guardarCantidad('ethereum')" /></td>
+        <td id="valor_ethereum">-</td>
+      </tr>
+      <tr>
+        <td>Dogecoin (DOGE)</td>
+        <td id="precio_dogecoin">-</td>
+        <td><input type="number" id="input_dogecoin" min="0" step="any" onchange="guardarCantidad('dogecoin')" /></td>
+        <td id="valor_dogecoin">-</td>
+      </tr>
+      <tr>
+        <td>Solana (SOL)</td>
+        <td id="precio_solana">-</td>
+        <td><input type="number" id="input_solana" min="0" step="any" onchange="guardarCantidad('solana')" /></td>
+        <td id="valor_solana">-</td>
+      </tr>
+    </tbody>
+  </table>
+  <h3>Total inversión: <span id="total_inversion">-</span></h3>
 </body>
 </html>
